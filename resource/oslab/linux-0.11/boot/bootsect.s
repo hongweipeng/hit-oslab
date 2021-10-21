@@ -44,19 +44,20 @@ ROOT_DEV = 0x306
 
 entry _start
 _start:
-	mov	ax,#BOOTSEG
+	mov	ax,#BOOTSEG         ! 此条与就是 0x07c0 处存放的语句
 	mov	ds,ax
 	mov	ax,#INITSEG
-	mov	es,ax
+	mov	es,ax               ! ds=0x07c0  es=0x9000
 	mov	cx,#256
-	sub	si,si
+	sub	si,si               ! 清零 si, di 寄存器
 	sub	di,di
-	rep
+	rep                     ! 将 0x07c0:0x0000 处的 256 个字移动到 0x9000:0x0000
 	movw
-	jmpi	go,INITSEG
-go:	mov	ax,cs
+	jmpi	go,INITSEG      ! go(偏移量) 赋值给 ip, #INITSEG 赋值给 cs
+go:	mov	ax,cs               ! 此时 cs = 0x9000， 执行后 ax = 0x9000
 	mov	ds,ax
-	mov	es,ax
+	mov	es,ax               ! ds,es,ax 都为 0x9000
+	                        ! 为 call 做准备
 ! put stack at 0x9ff00.
 	mov	ss,ax
 	mov	sp,#0xFF00		! arbitrary value >>512
@@ -64,7 +65,7 @@ go:	mov	ax,cs
 ! load the setup-sectors directly after the bootblock.
 ! Note that 'es' is already set up.
 
-load_setup:
+load_setup:             ! 载入 setup 模块
 	mov	dx,#0x0000		! drive 0, head 0
 	mov	cx,#0x0002		! sector 2, track 0
 	mov	bx,#0x0200		! address = 512, in INITSEG
@@ -73,7 +74,15 @@ load_setup:
 	jnc	ok_load_setup		! ok - continue
 	mov	dx,#0x0000
 	mov	ax,#0x0000		! reset the diskette
-	int	0x13
+	int	0x13            ! BIOS 中断
+	                    ! 0x13 是 BIOS 读磁盘扇区的终端
+	                    ! ah = 0x02-读磁盘
+	                    ! al = 扇区数量(SETUPLEN=4)
+	                    ! ch = 柱面号
+	                    ! cl = 开始扇区
+	                    ! dh = 磁头号
+	                    ! dl = 驱动器号
+	                    ! 读到内存地址 es:bx 中，此时 es = 0x9000 , bx = 0x0200 ; 所以实际内存地址为 0x90200
 	j	load_setup
 
 ok_load_setup:
@@ -91,22 +100,22 @@ ok_load_setup:
 
 ! Print some inane message
 
-	mov	ah,#0x03		! read cursor pos
+	mov	ah,#0x03		! read cursor pos ! 读取光标
 	xor	bh,bh
-	int	0x10
+	int	0x10            ! 10 号中断，显示字符
 	
-	mov	cx,#24
-	mov	bx,#0x0007		! page 0, attribute 7 (normal)
-	mov	bp,#msg1
+	mov	cx,#24          ! 24 ,说明要输出 24 个字符
+	mov	bx,#0x0007		! page 0, attribute 7 (normal)  ! 7 是显示属性
+	mov	bp,#msg1        ! 显示 logo
 	mov	ax,#0x1301		! write string, move cursor
 	int	0x10
 
 ! ok, we've written the message, now
 ! we want to load the system (at 0x10000)
 
-	mov	ax,#SYSSEG
+	mov	ax,#SYSSEG      ! SYSSEG = 0x1000
 	mov	es,ax		! segment of 0x010000
-	call	read_it
+	call	read_it     ! 读入 system 模块
 	call	kill_motor
 
 ! After that we check which root-device to use. If the device is
@@ -136,7 +145,7 @@ root_defined:
 ! the setup-routine loaded directly after
 ! the bootblock:
 
-	jmpi	0,SETUPSEG
+	jmpi	0,SETUPSEG      ! 转入地址 0x9020:0x0000,  执行 setup.s
 
 ! This routine loads the system at address 0x10000, making sure
 ! no 64kB boundaries are crossed. We try to load it as fast as
@@ -148,7 +157,7 @@ sread:	.word 1+SETUPLEN	! sectors read of current track
 head:	.word 0			! current head
 track:	.word 0			! current track
 
-read_it:
+read_it:                ! 为什么读入 system 模块还需要定义一个函数？ system 模块可能很大，要跨越磁道。
 	mov ax,es
 	test ax,#0x0fff
 die:	jne die			! es must be at 64kB boundary
@@ -156,7 +165,8 @@ die:	jne die			! es must be at 64kB boundary
 rp_read:
 	mov ax,es
 	cmp ax,#ENDSEG		! have we loaded all yet?
-	jb ok1_read
+	jb ok1_read         ! ENDSEG = SYSSEG + SYSSIZE
+	                    ! SYSSIZE = 0x3000  // 该变量可根据 Image 大小设定（编译操作系统时）
 	ret
 ok1_read:
 	seg cs
@@ -195,7 +205,7 @@ ok3_read:
 	xor bx,bx
 	jmp rp_read
 
-read_track:
+read_track:     // 读磁道
 	push ax
 	push bx
 	push cx
@@ -239,7 +249,7 @@ kill_motor:
 	ret
 
 sectors:
-	.word 0
+	.word 0             ! 磁道扇区数
 
 msg1:
 	.byte 13,10
