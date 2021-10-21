@@ -171,7 +171,7 @@ rp_read:
 ok1_read:
 	seg cs
 	mov ax,sectors
-	sub ax,sread
+	sub ax,sread        ! sread 是当前磁道以读扇区数，ax 为未读扇区数
 	mov cx,ax
 	shl cx,#9
 	add cx,bx
@@ -256,11 +256,11 @@ msg1:
 	.ascii "Loading system ..."
 	.byte 13,10,13,10
 
-.org 508
+.org 508                ! 引导区的末尾 BIOS 用以识别引导区
 root_dev:
 	.word ROOT_DEV
 boot_flag:
-	.word 0xAA55
+	.word 0xAA55        ! 扇区的最后两个字节，否则会打出非引导设备
 
 .text
 endtext:
