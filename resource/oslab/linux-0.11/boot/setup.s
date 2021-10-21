@@ -28,7 +28,7 @@ begbss:
 .text
 
 entry start
-start:
+start:              ! setup.s 的代码已经搬到内存 0x90000 处，段寄存器值 0x9000
 
 ! ok, the read went well so we get current cursor position and save it for
 ! posterity.
@@ -37,13 +37,22 @@ start:
 	mov	ds,ax
 	mov	ah,#0x03	! read cursor pos
 	xor	bh,bh
-	int	0x10		! save it in known place, con_init fetches
+	int	0x10		! save it in known place, con_init fetches ! 取光标位置
 	mov	[0],dx		! it from 0x90000.
+	                ! 取出光标位置（包括其他位置参数）到 [num] 即 0x90000 + num 处
+	                ! 内存地址和保存的值和含义如下表
+	                ! | 物理内存地址   | 长度 | 名称       |
+                    ! | ------------ | ---- | --------- |
+                    ! | 0x90000      | 2    | 光标位置   |
+                    ! | 0x90002      | 2    | 扩展内存数 |
+                    ! | 0x9000C      | 2    | 显卡参数   |
+                    ! | 0x901FC      | 2    | 根设备号   |
+
 ! Get memory size (extended mem, kB)
 
 	mov	ah,#0x88
-	int	0x15
-	mov	[2],ax
+	int	0x15        ! 获取扩展内存大小( 1MB 以后的内存都是扩展内存 )
+	mov	[2],ax      ! 扩展内存数保存到 0x90002 处
 
 ! Get video-card data:
 
@@ -104,8 +113,10 @@ no_disk1:
 is_disk1:
 
 ! now we want to move to protected mode ...
+! 为进入保护模式做准备：
+! 1. 将 system 模块的代码从物理内存地址为 0x90000 ~ ? 移动到 0 ~ 0x90000 的地方
 
-	cli			! no interrupts allowed !
+	cli			! no interrupts allowed !   ! 不允许中断
 
 ! first we move the system to it's rightful place
 
@@ -121,7 +132,7 @@ do_move:
 	sub	si,si
 	mov 	cx,#0x8000
 	rep
-	movsw
+	movsw           ! 将 system 模块移到 0 地址
 	jmp	do_move
 
 ! then we load the segment descriptors
@@ -189,6 +200,7 @@ end_move:
 	mov	ax,#0x0001	! protected mode (PE) bit
 	lmsw	ax		! This is it!
 	jmpi	0,8		! jmp offset 0 of segment 8 (cs)
+	                ! jmpi 0 8 进入保护模式，之后寻址模式发生改变
 
 ! This routine checks that the keyboard command queue is empty
 ! No timeout is used - if this hangs there is something wrong with
