@@ -20,9 +20,9 @@ startup_32:
 	mov %ax,%ds
 	mov %ax,%es
 	mov %ax,%fs
-	mov %ax,%gs
-	lss stack_start,%esp
-	call setup_idt
+	mov %ax,%gs             # 指向 gdt 的 0x10 项（数据段）
+	lss stack_start,%esp    # 设置栈（系统栈）
+	call setup_idt          # 又一次初始化 idt 表和 gdt 表
 	call setup_gdt
 	movl $0x10,%eax		# reload all the segment registers
 	mov %ax,%ds		# after changing gdt. CS was already
