@@ -37,7 +37,7 @@ __asm__ ("movw %%dx,%%ax\n\t" \
 	_set_gate(&idt[n],15,0,addr)
 
 #define set_system_gate(n,addr) \
-	_set_gate(&idt[n],15,3,addr)
+	_set_gate(&idt[n],15,3,addr)    // dit 是中断向量表基址
 
 #define _set_seg_desc(gate_addr,type,dpl,base,limit) {\
 	*(gate_addr) = ((base) & 0xff000000) | \

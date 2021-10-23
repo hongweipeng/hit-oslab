@@ -408,5 +408,5 @@ void sched_init(void)
 	outb(LATCH >> 8 , 0x40);	/* MSB */
 	set_intr_gate(0x20,&timer_interrupt);
 	outb(inb_p(0x21)&~0x01,0x21);
-	set_system_gate(0x80,&system_call);
+	set_system_gate(0x80,&system_call);     // 设置 int 0x80 的对应的处理函数
 }

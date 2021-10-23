@@ -78,20 +78,20 @@ reschedule:
 	jmp schedule
 .align 2
 system_call:
-	cmpl $nr_system_calls-1,%eax
+	cmpl $nr_system_calls-1,%eax        # eax 中存放的是系统调用号
 	ja bad_sys_call
 	push %ds
 	push %es
 	push %fs
 	pushl %edx
-	pushl %ecx		# push %ebx,%ecx,%edx as parameters
+	pushl %ecx		# push %ebx,%ecx,%edx as parameters     # 调用的参数
 	pushl %ebx		# to the system call
 	movl $0x10,%edx		# set up ds,es to kernel space
 	mov %dx,%ds
-	mov %dx,%es
+	mov %dx,%es         # 内核数据
 	movl $0x17,%edx		# fs points to local data space
-	mov %dx,%fs
-	call sys_call_table(,%eax,4)
+	mov %dx,%fs         # fs 可以找到用户数据
+	call sys_call_table(,%eax,4)    # a(,%eax,4) = a + 4 * eax
 	pushl %eax
 	movl current,%eax
 	cmpl $0,state(%eax)		# state

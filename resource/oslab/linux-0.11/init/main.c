@@ -101,6 +101,10 @@ static long main_memory_start = 0;
 
 struct drive_info { char dummy[32]; } drive_info;
 
+/**
+ * main 的参数为什么是 void ？
+ * main 的标准是有三个参数：argc, argv, envp 。但此处并没有使用，此处的 main 只是写成传统的 main 形式和命名
+ */
 void main(void)		/* This really IS void, no error here. */
 {			/* The startup routine assumes (well, ...) this */
 /*
@@ -123,7 +127,8 @@ void main(void)		/* This really IS void, no error here. */
 #ifdef RAMDISK
 	main_memory_start += rd_init(main_memory_start, RAMDISK*1024);
 #endif
-	mem_init(main_memory_start,memory_end);
+	// 初始化工作：内存，中断，设备，时钟，CPU等
+	mem_init(main_memory_start,memory_end);     // 两个参数从 0x90002 的内存地址读取
 	trap_init();
 	blk_dev_init();
 	chr_dev_init();
@@ -134,7 +139,7 @@ void main(void)		/* This really IS void, no error here. */
 	hd_init();
 	floppy_init();
 	sti();
-	move_to_user_mode();
+	move_to_user_mode();    // 用户模式
 	if (!fork()) {		/* we count on this going ok */
 		init();
 	}

@@ -397,6 +397,11 @@ void do_no_page(unsigned long error_code,unsigned long address)
 	oom();
 }
 
+/**
+ * 初始化全局数组变量 mem_map
+ * @param start_mem
+ * @param end_mem
+ */
 void mem_init(long start_mem, long end_mem)
 {
 	int i;
@@ -406,9 +411,9 @@ void mem_init(long start_mem, long end_mem)
 		mem_map[i] = USED;
 	i = MAP_NR(start_mem);
 	end_mem -= start_mem;
-	end_mem >>= 12;
+	end_mem >>= 12;         // end_mem 右移 12 位，即 end_mem = end_mem / (4 * 1024)
 	while (end_mem-->0)
-		mem_map[i++]=0;
+		mem_map[i++]=0;     // 每 4K 作为一页
 }
 
 void calc_mem(void)

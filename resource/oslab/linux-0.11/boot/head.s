@@ -15,13 +15,14 @@
 .globl idt,gdt,pg_dir,tmp_floppy_area
 pg_dir:
 .globl startup_32
-startup_32:
+startup_32:                 # head 是进入之后的初始化
 	movl $0x10,%eax
 	mov %ax,%ds
 	mov %ax,%es
 	mov %ax,%fs
 	mov %ax,%gs             # 指向 gdt 的 0x10 项（数据段）
 	lss stack_start,%esp    # 设置栈（系统栈）
+	                        # struct{long *a; shot b;} stack_start = {&user_stack[PAGE_SIZE>>2], 0x10 }
 	call setup_idt          # 又一次初始化 idt 表和 gdt 表
 	call setup_gdt
 	movl $0x10,%eax		# reload all the segment registers
@@ -34,7 +35,7 @@ startup_32:
 1:	incl %eax		# check that A20 really IS enabled
 	movl %eax,0x000000	# loop forever if it isn't
 	cmpl %eax,0x100000
-	je 1b
+	je 1b           # 0 地址处和 1M 地址处相同（A20没开启），就死循环
 
 /*
  * NOTE! 486 should set bit 16, to check for write-protect in supervisor
@@ -48,7 +49,7 @@ startup_32:
 	orl $2,%eax		# set MP
 	movl %eax,%cr0
 	call check_x87
-	jmp after_page_tables
+	jmp after_page_tables       # 页表
 
 /*
  * We depend on ET to be correct. This checks for 287/387.
@@ -140,10 +141,11 @@ after_page_tables:
 	pushl $0
 	pushl $L6		# return address for main, if it decides to.
 	pushl $main
-	jmp setup_paging
+	jmp setup_paging    # 跳到 init/main.c 中的 main 函数
 L6:
 	jmp L6			# main should never return here, but
 				# just in case, we know what happens.
+				# 会发现 jmp L6 是一个循环，也就是说 main.c 中的函数 main 若是 return 了，return 值保存到L6地址，然后死机 = =
 
 /* This is the default interrupt "handler" :-) */
 int_msg:
