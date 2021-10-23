@@ -3,7 +3,7 @@
 ! 0x3000 is 0x30000 bytes = 196kB, more than enough for current
 ! versions of linux
 !
-SYSSIZE = 0x3000
+SYSSIZE = 0x3000            ! system 模块占用 0x30000 bytes 即 196kB 大小
 !
 !	bootsect.s		(C) 1991 Linus Torvalds
 !
@@ -31,12 +31,12 @@ begdata:
 begbss:
 .text
 
-SETUPLEN = 4				! nr of setup-sectors
-BOOTSEG  = 0x07c0			! original address of boot-sector
-INITSEG  = 0x9000			! we move boot here - out of the way
-SETUPSEG = 0x9020			! setup starts here
-SYSSEG   = 0x1000			! system loaded at 0x10000 (65536).
-ENDSEG   = SYSSEG + SYSSIZE		! where to stop loading
+SETUPLEN = 4				! nr of setup-sectors                   ! setup程序代码占用扇区数
+BOOTSEG  = 0x07c0			! original address of boot-sector       ! bootsect程序代码所在内存原始地址
+INITSEG  = 0x9000			! we move boot here - out of the way    ! 将bootsect移动到0x9000处
+SETUPSEG = 0x9020			! setup starts here                     ! setup程序开始的地址
+SYSSEG   = 0x1000			! system loaded at 0x10000 (65536).     ! system程序开始的地址
+ENDSEG   = SYSSEG + SYSSIZE		! where to stop loading             ! system程序结束的地址
 
 ! ROOT_DEV:	0x000 - same type of floppy as boot.
 !		0x301 - first partition on first drive etc
@@ -44,6 +44,7 @@ ROOT_DEV = 0x306
 
 entry _start
 _start:
+! 下面这段代码将自身复制到 0x9000 处
 	mov	ax,#BOOTSEG         ! 此条与就是 0x07c0 处存放的语句
 	mov	ds,ax
 	mov	ax,#INITSEG
@@ -53,10 +54,11 @@ _start:
 	sub	di,di
 	rep                     ! 将 0x07c0:0x0000 处的 256 个字移动到 0x9000:0x0000
 	movw
+	! 复制完成从 0x9000 的 go 标号处开始执行
 	jmpi	go,INITSEG      ! go(偏移量) 赋值给 ip, #INITSEG 赋值给 cs
 go:	mov	ax,cs               ! 此时 cs = 0x9000， 执行后 ax = 0x9000
 	mov	ds,ax
-	mov	es,ax               ! ds,es,ax 都为 0x9000
+	mov	es,ax               ! 设置 ds,es,ax 都为 cs 即 0x9000
 	                        ! 为 call 做准备
 ! put stack at 0x9ff00.
 	mov	ss,ax
@@ -71,7 +73,8 @@ load_setup:             ! 载入 setup 模块
 	mov	bx,#0x0200		! address = 512, in INITSEG
 	mov	ax,#0x0200+SETUPLEN	! service 2, nr of sectors
 	int	0x13			! read it
-	jnc	ok_load_setup		! ok - continue
+	jnc	ok_load_setup		! ok - continue     ! 加载成功，跳到 ok_load_setup: 执行
+	! 加载错误
 	mov	dx,#0x0000
 	mov	ax,#0x0000		! reset the diskette
 	int	0x13            ! BIOS 中断
@@ -99,6 +102,7 @@ ok_load_setup:
 	mov	es,ax
 
 ! Print some inane message
+!输出一些信息
 
 	mov	ah,#0x03		! read cursor pos ! 读取光标
 	xor	bh,bh
@@ -106,7 +110,7 @@ ok_load_setup:
 	
 	mov	cx,#24          ! 24 ,说明要输出 24 个字符
 	mov	bx,#0x0007		! page 0, attribute 7 (normal)  ! 7 是显示属性
-	mov	bp,#msg1        ! 显示 logo
+	mov	bp,#msg1        ! es:bp 指向待显示 字符串
 	mov	ax,#0x1301		! write string, move cursor
 	int	0x10
 
@@ -144,7 +148,7 @@ root_defined:
 ! after that (everyting loaded), we jump to
 ! the setup-routine loaded directly after
 ! the bootblock:
-
+!开始执行setup代码
 	jmpi	0,SETUPSEG      ! 转入地址 0x9020:0x0000,  执行 setup.s
 
 ! This routine loads the system at address 0x10000, making sure

@@ -32,9 +32,10 @@ start:              ! setup.s 的代码已经搬到内存 0x90200 处，段寄�
 
 ! ok, the read went well so we get current cursor position and save it for
 ! posterity.
+! 获取光标位置 =>  0x9000:0
 
 	mov	ax,#INITSEG	! this is done in bootsect already, but...
-	mov	ds,ax
+	mov	ds,ax       ! 设置cs=ds=es
 	mov	ah,#0x03	! read cursor pos
 	xor	bh,bh
 	int	0x10		! save it in known place, con_init fetches ! 取光标位置
@@ -49,6 +50,7 @@ start:              ! setup.s 的代码已经搬到内存 0x90200 处，段寄�
                     ! | 0x901FC      | 2    | 根设备号   |
 
 ! Get memory size (extended mem, kB)
+! 获取拓展内存大小 => 0x9000:2
 
 	mov	ah,#0x88
 	int	0x15        ! 获取扩展内存大小( 1MB 以后的内存都是扩展内存 )
@@ -71,6 +73,7 @@ start:              ! setup.s 的代码已经搬到内存 0x90200 处，段寄�
 	mov	[12],cx
 
 ! Get hd0 data
+! 获取硬盘参数 => 0x9000:80  大小：16B
 
 	mov	ax,#0x0000
 	mov	ds,ax
@@ -87,7 +90,7 @@ start:              ! setup.s 的代码已经搬到内存 0x90200 处，段寄�
 	mov	ax,#0x0000
 	mov	ds,ax
 	lds	si,[4*0x46]
-	mov	ax,#INITSEG
+	mov	ax,#INITSEG     ! 前面修改了ds寄存器，这里将其设置为0x9000
 	mov	es,ax
 	mov	di,#0x0090
 	mov	cx,#0x10
