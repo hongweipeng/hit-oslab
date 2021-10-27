@@ -14,9 +14,16 @@
 
 ! NOTE! These had better be the same as in bootsect.s!
 
-INITSEG  = 0x9000	! we move boot here - out of the way
-SYSSEG   = 0x1000	! system loaded at 0x10000 (65536).
-SETUPSEG = 0x9020	! this is the current segment
+; setup.s 负责从 BIOS 中获取 system 数据，并将这些数据放到系统内存适当的地方。
+; 此时 setup.s 和 system 已经由 bootsect 引导块加载到内存中。
+;
+; 这段代码向 BIOS 获取有关 内存/磁盘/其他参数，并将这些参数放到一个”安全“的地方，
+; 然后在被缓冲块覆盖掉直线由保护模式的 system 读取
+;
+; 这些参数最好和 bootsect.s 中相同
+INITSEG  = 0x9000	! we move boot here - out of the way        ; 原来 bootsect 所处的段地址
+SYSSEG   = 0x1000	! system loaded at 0x10000 (65536).         ; system 模块在内存的段地址
+SETUPSEG = 0x9020	! this is the current segment               ; 本程序(setup.s)所在的段地址
 
 .globl begtext, begdata, begbss, endtext, enddata, endbss
 .text
@@ -28,35 +35,42 @@ begbss:
 .text
 
 entry start
-start:              ! setup.s 的代码已经搬到内存 0x90200 处，段寄存器值 0x9020
+start:              ; setup.s 的代码已经搬到内存 0x90200 处，段寄存器值 0x9020
 
 ! ok, the read went well so we get current cursor position and save it for
 ! posterity.
-! 获取光标位置 =>  0x9000:0
+; ok, 整个读磁盘过程都正常，现在将光标位置保存以后今后使用
+; 获取光标位置 =>  0x9000:0
 
 	mov	ax,#INITSEG	! this is done in bootsect already, but...
-	mov	ds,ax       ! 设置cs=ds=es
-	mov	ah,#0x03	! read cursor pos
-	xor	bh,bh
-	int	0x10		! save it in known place, con_init fetches ! 取光标位置
+	mov	ds,ax       ; 设置cs=ds=es
+	mov	ah,#0x03	! read cursor pos           ; 0x10 是BIOS 中断，功能号 ah = 03 是读取光标位置
+	xor	bh,bh       ; 输入 : bh = 页号
+	int	0x10		! save it in known place, con_init fetches  ; 返回：ch = 扫描开始线,cl = 扫描结束线
 	mov	[0],dx		! it from 0x90000.
-	                ! 取出光标位置（包括其他位置参数）到 [num] 即 0x90000 + num 处
-	                ! 内存地址和保存的值和含义如下表
-	                ! | 物理内存地址   | 长度 | 名称       |
-                    ! | ------------ | ---- | --------- |
-                    ! | 0x90000      | 2    | 光标位置   |
-                    ! | 0x90002      | 2    | 扩展内存数 |
-                    ! | 0x9000C      | 2    | 显卡参数   |
-                    ! | 0x901FC      | 2    | 根设备号   |
+	                ; 取出光标位置（包括其他位置参数）到 [num] 即 0x90000 + num 处
+	                ; 内存地址和保存的值和含义如下表
+	                ; | 物理内存地址   | 长度 | 名称       |
+                    ; | ------------ | ---- | --------- |
+                    ; | 0x90000      | 2    | 光标位置   |
+                    ; | 0x90002      | 2    | 扩展内存数 |
+                    ; | 0x9000C      | 2    | 显卡参数   |
+                    ; | 0x901FC      | 2    | 根设备号   |
 
 ! Get memory size (extended mem, kB)
-! 获取拓展内存大小 => 0x9000:2
+; 获取拓展内存大小 => 0x9000:2
 
-	mov	ah,#0x88
-	int	0x15        ! 获取扩展内存大小( 1MB 以后的内存都是扩展内存 )
-	mov	[2],ax      ! 扩展内存数保存到 0x90002 处
+	mov	ah,#0x88    ; 设置 0x15 中断的功能号设置为 0x88
+	int	0x15        ; 获取扩展内存大小( 1MB 以后的内存都是扩展内存 )
+	mov	[2],ax      ; 扩展内存数保存到 0x90002 处
 
 ! Get video-card data:
+; 下面这段用于读取显示卡当前显示模式
+; 调用 0x10 BIOS 中断，功能号: ah = 0x0f
+; 返回：ah = 字符列数， al = 显示模式，  bh = 当前显示页
+; 内存地址   0x90004 （1字）存放当前页
+;           0x90006 显示模式
+;           0x90007 字符列数
 
 	mov	ah,#0x0f
 	int	0x10
@@ -64,24 +78,36 @@ start:              ! setup.s 的代码已经搬到内存 0x90200 处，段寄�
 	mov	[6],ax		! al = video mode, ah = window width
 
 ! check for EGA/VGA and some config parameters
-
+; 先查显示方式 (EGA/VGA) 并取参数
+; 调用 0x10 BIOS 中断，功能号：ah = 0x12, bl = 0x10
+; 返回：bh = 显示状态
+;           00 - 彩色模式，I/O 端口 = 3dX
+;           01 - 单色模式，I/O 端口 = 3bX
+;      bl = 安装的显示内存 (00 - 64k, 01 - 128k, 02 - 192k, 03 = 256k)
+;      cx = 显示卡特性参数
 	mov	ah,#0x12
 	mov	bl,#0x10
 	int	0x10
 	mov	[8],ax
-	mov	[10],bx
-	mov	[12],cx
+	mov	[10],bx     ; 0x9000a 保存显示内存； 0x9000b 保存显示状态（彩色/单色）
+	mov	[12],cx     ; 0x9000c 保存显示卡特性参数
 
 ! Get hd0 data
-! 获取硬盘参数 => 0x9000:80  大小：16B
+; 获取硬盘参数 => 0x9000:80  大小：16B
+; 取第一个硬盘的信息（复制硬盘参数表）
+; 第一个硬盘参数表的首地址是中断向量 0x41 的向量值，而第二个银盘参数表紧接这第一个表的后面，
+; 因此第二个硬盘中断向量是 0x64 也指向了第二个硬盘的参数表首地址。
+; 表的长度是 0x10 字节
+;
+; 下面两段程序分别复制 BIOS 有关两个硬盘的参数表；0x90080 防第一个硬盘的表；0x90090 防第二个硬盘的表
 
 	mov	ax,#0x0000
 	mov	ds,ax
-	lds	si,[4*0x41]
+	lds	si,[4*0x41]     ; 取中断向量 0x41 的值，也即 hd0 参数表的地址 ds:si
 	mov	ax,#INITSEG
 	mov	es,ax
-	mov	di,#0x0080
-	mov	cx,#0x10
+	mov	di,#0x0080      ; 复制到的目标地址 es:di: 0x9000:0x0080
+	mov	cx,#0x10        ; 共复制 0x10 字节
 	rep
 	movsb
 
@@ -98,14 +124,20 @@ start:              ! setup.s 的代码已经搬到内存 0x90200 处，段寄�
 	movsb
 
 ! Check that there IS a hd1 :-)
-
+; 检查系统是否存在第二块硬盘，如果不存在，则第二个表清零
+; 调用 0x13 中断，功能号：ah = 0x15
+; 输入：dl = 驱动器号(8X 是硬盘：80 指第一个硬盘，81 指第二个硬盘）
+; 输出：ah = 类型码： 00 - 没有这个盘，CF 置位；
+;                   01 - 是软驱，没有change-line 支持；
+;                   02 - 是软驱(或其它可移动设备)，有change-line 支持；
+;                   03 - 是硬盘。
 	mov	ax,#0x01500
 	mov	dl,#0x81
 	int	0x13
 	jc	no_disk1
 	cmp	ah,#3
 	je	is_disk1
-no_disk1:
+no_disk1:           ; 第二个硬盘不存在，则对第二个硬盘表清零
 	mov	ax,#INITSEG
 	mov	es,ax
 	mov	di,#0x0090
@@ -116,37 +148,42 @@ no_disk1:
 is_disk1:
 
 ! now we want to move to protected mode ...
-! 为进入保护模式做准备：
-! 1. 将 system 模块的代码从物理内存地址为 0x90000 ~ ? 移动到 0 ~ 0x90000 的地方
+; 为进入保护模式做准备：
 
-	cli			! no interrupts allowed !   ! 不允许中断
+	cli			! no interrupts allowed !   ; 不允许中断
 
 ! first we move the system to it's rightful place
-
+; 首先我们将system 模块移到正确的位置。
+;
+; bootsect 引导程序将 system 模块读入到 0x10000 (64kB) 开始的位置。由于当时假设 SYSSIZE = 0x3000 即 196kB 大小;
+; Tips: 在 linux 0.11 中，其实是允许 system 模块最大长度是 80000（512k），因为 0x90000 是 bootsect 的代码了。
+; 将 system 模块的代码从物理内存地址为 0x90000 ~ 0xa0000 移动到 0 ~ 0x90000 的内存数据块(512k)
+; 整块地向内存低端移动了0x10000（64k）的位置
 	mov	ax,#0x0000
 	cld			! 'direction'=0, movs moves forward
 do_move:
-	mov	es,ax		! destination segment
-	add	ax,#0x1000
-	cmp	ax,#0x9000
+	mov	es,ax		! destination segment       ; es:di 目的地址 (0x0000:0)
+	add	ax,#0x1000  ; system 模块从 0x10000 开始
+	cmp	ax,#0x9000  ; 判断是否把 8000 段（64kB）都移动完？
 	jz	end_move
 	mov	ds,ax		! source segment
 	sub	di,di
 	sub	si,si
-	mov 	cx,#0x8000
+	mov 	cx,#0x8000  ; 移动 0x8000 次，由 movsw 得出按字移动，因此移动了 0x10000 字节（64kB）
 	rep
 	movsw           ! 将 system 模块移到 0 地址
 	jmp	do_move
 
 ! then we load the segment descriptors
+; 此后，我们加载段描述符
 
 end_move:
 	mov	ax,#SETUPSEG	! right, forgot this at first. didn't work :-)
 	mov	ds,ax
 	lidt	idt_48		! load idt with 0,0
 	lgdt	gdt_48		! load gdt with whatever appropriate
-	                    ! 通过 lgdt 指令从内存中读取 48 位的内存数据，存入 GDTR 寄存器
-	                    ! 48 位数据表示的是全局描述符表的位置和大小，低 32 位表示起始位置，高16位表示表的最后一个字节的偏移（表的大小-1）
+	                    ; 通过 lgdt 指令从内存中读取 48 位的内存数据，存入 GDTR 寄存器
+	                    ; 48 位数据表示的是全局描述符表的位置和大小，低 32 位表示起始位置，高16位表示表的最后一个字节的偏移（表的大小-1）
 
 ! that was painless, now we enable A20
 ! 8024 是键盘控制器，其输出端口 P2 用来控制 A20 地址线

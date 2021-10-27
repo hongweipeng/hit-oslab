@@ -54,7 +54,7 @@ BOOTSEG  = 0x07c0			! original address of boot-sector       ; bootsect 程序代
 INITSEG  = 0x9000			! we move boot here - out of the way    ; 将 bootsect 移动到 0x9000 处
 SETUPSEG = 0x9020			! setup starts here                     ; setup 程序开始的地址
 SYSSEG   = 0x1000			! system loaded at 0x10000 (65536).     ; system 模块加载到 0x10000 （64 kB） 处
-ENDSEG   = SYSSEG + SYSSIZE		! where to stop loading             ; system 程序结束的地址
+ENDSEG   = SYSSEG + SYSSIZE		! where to stop loading             ; system 程序结束的地址 ENDSEG = 0x4000
 
 ! ROOT_DEV:	0x000 - same type of floppy as boot.
 !		0x301 - first partition on first drive etc
@@ -87,7 +87,7 @@ _start:
 	sub	di,di
 	                        ; 源地址 ds:si = 0x07c0:0x0000
 	                        ; 目标地址 es:di = 0x9000:0x0000
-	rep                     ; 将 0x07c0:0x0000 处的 256 个字移动到 0x9000:0x0000
+	rep                     ; 将 0x07c0:0x0000 处的 256 个字（即 512 个字节）移动到 0x9000:0x0000
 	movw
 	; 复制完成从 0x9000 的 go 标号处开始执行
 	jmpi	go,INITSEG      ; go(偏移量) 赋值给 ip, #INITSEG 赋值给 cs
