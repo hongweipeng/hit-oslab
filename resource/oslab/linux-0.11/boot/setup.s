@@ -159,6 +159,7 @@ is_disk1:
 ; Tips: 在 linux 0.11 中，其实是允许 system 模块最大长度是 80000（512k），因为 0x90000 是 bootsect 的代码了。
 ; 将 system 模块的代码从物理内存地址为 0x90000 ~ 0xa0000 移动到 0 ~ 0x90000 的内存数据块(512k)
 ; 整块地向内存低端移动了0x10000（64k）的位置
+
 	mov	ax,#0x0000
 	cld			! 'direction'=0, movs moves forward
 do_move:
@@ -166,34 +167,41 @@ do_move:
 	add	ax,#0x1000  ; system 模块从 0x10000 开始
 	cmp	ax,#0x9000  ; 判断是否把 8000 段（64kB）都移动完？
 	jz	end_move
-	mov	ds,ax		! source segment
+	mov	ds,ax		! source segment            ; ds:si 源地址 (0x1000:0)
 	sub	di,di
 	sub	si,si
 	mov 	cx,#0x8000  ; 移动 0x8000 次，由 movsw 得出按字移动，因此移动了 0x10000 字节（64kB）
 	rep
-	movsw           ! 将 system 模块移到 0 地址
+	movsw
 	jmp	do_move
 
 ! then we load the segment descriptors
 ; 此后，我们加载段描述符
-
+;
+; 这里有几个关于 32 位保护模式的操作：
+; lidt 指令 - 用于加载终端描述符表(idt)寄存器，它的操作数是 6 个字节：
+;            0-1 字节是描述符的长度值（字节）；2-5 字节是描述符表的 32 位线性基地址（首地址）。
+;            每个表项占 8 个字节。
+; lgdt 指令 - 用于加载全局描述符（gdt）寄存器，其操作数也是 6 个字节。每个表项 8 个字节，其中包括段的
+;            最大长度限制(16 位)、段的线性基址（32 位）、段的特权级、段是否在内存、读写许可以及
+;            其它一些保护模式运行的标志。
 end_move:
 	mov	ax,#SETUPSEG	! right, forgot this at first. didn't work :-)
 	mov	ds,ax
-	lidt	idt_48		! load idt with 0,0
+	lidt	idt_48		! load idt with 0,0             ; 加载中断描述符表(idt)寄存器，idt_48 是6 字节操作数的位置
 	lgdt	gdt_48		! load gdt with whatever appropriate
 	                    ; 通过 lgdt 指令从内存中读取 48 位的内存数据，存入 GDTR 寄存器
 	                    ; 48 位数据表示的是全局描述符表的位置和大小，低 32 位表示起始位置，高16位表示表的最后一个字节的偏移（表的大小-1）
 
 ! that was painless, now we enable A20
-! 8024 是键盘控制器，其输出端口 P2 用来控制 A20 地址线
+; 8024 是键盘控制器，其输出端口 P2 用来控制 A20 地址线
+	call	empty_8042  ; 在输入缓冲器置空, 只有当输入缓冲器为空时才可以对其进行写命令
+	mov	al,#0xD1		! command write     ; 0xD1 命令码表示写数据到 8024 的 P2 端口
+	out	#0x64,al        ; 数据要写道 60 口
 	call	empty_8042
-	mov	al,#0xD1		! command write     ! D1 表示写数据到 8024 的 P2 端口
-	out	#0x64,al
-	call	empty_8042
-	mov	al,#0xDF		! A20 on            ! 选通 A20 地址线
+	mov	al,#0xDF		! A20 on            ; 选通 A20 地址线的参数
 	out	#0x60,al
-	call	empty_8042
+	call	empty_8042  ; 输入缓冲器为空，则表示 A20 线已经选通
 
 ! well, that went ok, I hope. Now we have to reprogram the interrupts :-(
 ! we put them right after the intel-reserved hardware interrupts, at
@@ -203,8 +211,13 @@ end_move:
 ! which is used for the internal hardware interrupts as well. We just
 ! have to reprogram the 8259's, and it isn't fun.
 
-! 初始化 8259 (中断控制)， 一段非常机械化的程序
+; 希望以上一些正常。现在我们必须重新对中断进行编程
+; 我们将它们放在正好处于 intel 保留的硬件中断 (int 0x20~0x2F) 后面,这样不会引起冲突。
+; 不幸的是 IBM 在原 PC 机中搞糟了，以后也没有纠正过来。在 PC 的 BIOS 将中断放在了 0x08-0x0f,
+; 这些中断也用于内部硬件中断。所以我们就必须对 8259 中断控制器进行编程，这一点都没劲。
+;
 
+; 初始化 8259 (中断控制)， 一段非常机械化的程序
 	mov	al,#0x11		! initialization sequence
 	out	#0x20,al		! send it to 8259A-1
 	.word	0x00eb,0x00eb		! jmp $+2, jmp $+2
