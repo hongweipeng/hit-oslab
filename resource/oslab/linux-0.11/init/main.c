@@ -4,9 +4,9 @@
  *  (C) 1991  Linus Torvalds
  */
 
-#define __LIBRARY__
+#define __LIBRARY__     // 定义该变量是为了包括定义在 unistd.h 中的内嵌汇编代码等信息
 #include <unistd.h>
-#include <time.h>
+#include <time.h>       // 时间类型头文件。其中最主要定义了tm 结构和一些有关时间的函数原形
 
 /*
  * we need this inline - forking from kernel space will result
@@ -20,44 +20,57 @@
  * won't be any messing with the stack from main(), but we define
  * some others too.
  */
-static inline _syscall0(int,fork)
-static inline _syscall0(int,pause)
-static inline _syscall1(int,setup,void *,BIOS)
-static inline _syscall0(int,sync)
+/*
+ * 我们需要下面这些内嵌语句- 从内核空间创建进程(forking)将导致没有写时复
+ * 制（COPY ON WRITE）!!!直到一个执行 execve 调用。这对堆栈可能带来问题。处
+ * 理的方法是在 fork() 调用之后不让 main() 使用任何堆栈。因此就不能有函数调
+ * 用- 这意味着 fork 也要使用内嵌的代码，否则我们在从 fork() 退出时就要使用堆栈了。
+ *
+ * 实际上只有 pause 和 fork 需要使用内嵌方式，以保证从 main() 中不会弄乱堆栈，
+ * 但是我们同时还定义了其它一些函数。
+ */
+static inline _syscall0(int,fork)               // int fork()：创建进程
+static inline _syscall0(int,pause)              // int pause()：暂停进程的执行，直到收到一个信号
+static inline _syscall1(int,setup,void *,BIOS)  // int setup(void * BIOS): 仅用于 linux 初始化（仅在这个程序中被调用）
+static inline _syscall0(int,sync)               // int sync(): 更新文件系统
 
-#include <linux/tty.h>
-#include <linux/sched.h>
-#include <linux/head.h>
-#include <asm/system.h>
-#include <asm/io.h>
+#include <linux/tty.h>      // tty 头文件，定义了有关 tty_io 串行通信方面的参数，常熟
+#include <linux/sched.h>    // 调度程序头文件，定义了任务结构 task_struct，首个任务的初始数据，还有一些以宏的形式定义的有关描述符
+                            // 参数设置和获取的嵌入式汇编函数程序。
+#include <linux/head.h>     // head 头文件，定义了段描述符的简单结构和几个选择符常量
+#include <asm/system.h>     // system 头文件，以宏的形式定义了许多有关设置或修改描述符/idt等的嵌入式汇编子程序
+#include <asm/io.h>         // io 头文件，以宏的形式定义了对 io 端口操作的函数
 
-#include <stddef.h>
-#include <stdarg.h>
+#include <stddef.h>         // 标准定义头文件，以宏的形式定义了 NULL ，offsetof(TYPE, MEMBER)
+#include <stdarg.h>         // 标准参数头文件，以宏的形式定义了变量参数列表。主要定义了一个类型(va_list)和三个宏(va_start, va_arg va_end)
 #include <unistd.h>
-#include <fcntl.h>
-#include <sys/types.h>
+#include <fcntl.h>          // 文件控制头文件，用于文件及其描述符的操作控制常数、符号的定义
+#include <sys/types.h>      // 类型头文件，定义了基本的系统数据类型
 
-#include <linux/fs.h>
+#include <linux/fs.h>       // 文件系统头文件，定义了文件表结构（file, buffer_head, m_inode 等)
 
-static char printbuf[1024];
+static char printbuf[1024]; // 输出缓冲区
 
-extern int vsprintf();
-extern void init(void);
-extern void blk_dev_init(void);
-extern void chr_dev_init(void);
-extern void hd_init(void);
-extern void floppy_init(void);
-extern void mem_init(long start, long end);
-extern long rd_init(long mem_start, int length);
-extern long kernel_mktime(struct tm * tm);
-extern long startup_time;
+extern int vsprintf();                              // 送格式化输出到一字符串中(kernel/vsprintf.c)
+extern void init(void);                             // 函数原型，用于初始化，函数的实现就在本文件
+extern void blk_dev_init(void);                     // 块设备初始化子程序（kernel/blk_drv/ll_rw_blk.c）
+extern void chr_dev_init(void);                     // 字符设备初始化（kernel/chr_drv/tty_io.c）
+extern void hd_init(void);                          // 硬盘初始化程序（kernel/blk_drv/hd.c）
+extern void floppy_init(void);                      // 软驱初始化程序（kernel/blk_drv/floppy.c）
+extern void mem_init(long start, long end);         // 内存管理初始化（mm/memory.c）
+extern long rd_init(long mem_start, int length);    //虚拟盘初始化(kernel/blk_drv/ramdisk.c)
+extern long kernel_mktime(struct tm * tm);          // 建立内核时间（秒）。
+extern long startup_time;                           // 内核启动时间（开机时间）（秒）。
 
 /*
  * This is set up by the setup-routine at boot-time
  */
-#define EXT_MEM_K (*(unsigned short *)0x90002)
-#define DRIVE_INFO (*(struct drive_info *)0x90080)
-#define ORIG_ROOT_DEV (*(unsigned short *)0x901FC)
+/*
+ * 以下这些数据是从 setup.s 程序在引导设置的。
+ */
+#define EXT_MEM_K (*(unsigned short *)0x90002)      // 1M 以后的扩展内存大小（KB）
+#define DRIVE_INFO (*(struct drive_info *)0x90080)  // 硬盘参数表基址
+#define ORIG_ROOT_DEV (*(unsigned short *)0x901FC)  // 根文件系统所在的设备号
 
 /*
  * Yeah, yeah, it's ugly, but I cannot find how to do this correctly
@@ -65,12 +78,30 @@ extern long startup_time;
  * clock I'd be interested. Most of this was trial and error, and some
  * bios-listing reading. Urghh.
  */
+/*
+ * 是啊，是啊，下面这段程序很差劲，但我不知道如何正确地实现，而且好象
+ * 它还能运行。如果有关于实时时钟更多的资料，那我很感兴趣。这些都是试
+ * 探出来的，以及看了一些 bios 程序，呵！
+ *
+ * 这段宏读取CMOS 实时时钟信息。
+ * 0x70 是写端口号，0x80|addr 是要读取的CMOS 内存地址。
+ * 0x71 是读端口号
+ */
 
+/**
+ * 这段宏可以用下面这个函数代替
+ * _inline unsigned char CMOS_READ(unsigned char addr)
+    {
+        outb_p(addr,0x70);
+        return inb_p(0x71);
+    }
+ */
 #define CMOS_READ(addr) ({ \
 outb_p(0x80|addr,0x70); \
 inb_p(0x71); \
 })
 
+// 将BCD 码转换成数字
 #define BCD_TO_BIN(val) ((val)=((val)&15) + ((val)>>4)*10)
 
 static void time_init(void)
