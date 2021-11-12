@@ -257,7 +257,7 @@ __asm__("cld\n\t"           // 清方向位
 	"je 2f\n\t"             // 如果是，则向前跳转到标号2 处
 	"movl %4,%%edi\n\t"     // 取串2 头指针放入edi 中
 	"movl %%edx,%%ecx\n\t"  // 再将串2 的长度值放入ecx 中
-	"repne\n\t"             // 比较al 与串2 中字符 es:[edi]，并且 edi++
+	"repne\n\t"             // 比较 al 与串2 中字符 es:[edi]，并且 edi++
 	"scasb\n\t"             // 如果不相等就继续比较
 	"je 1b\n"               // 如果相等，则向后跳转到标号1 处
 	"2:\tdecl %0"           // esi--，指向最后一个包含在串2 中的字符
@@ -266,226 +266,315 @@ __asm__("cld\n\t"           // 清方向位
 return __res-cs;            // 返回字符序列的长度值
 }
 
+/**
+ * 寻找字符串1 中不包含字符串2 中任何字符的首个字符序列
+ * @param cs - 字符串1 指针
+ * @param ct - 字符串2 指针
+ * %0 - esi(__res)，%1 - eax(0)，%2 - ecx(-1)，%3 - esi(串1 指针csrc)，%4 - (串2 指针ct)
+ * @return 返回字符串1 中不包含字符串2 中任何字符的首个字符序列的长度值
+ */
 extern inline int strcspn(const char * cs, const char * ct)
 {
-register char * __res;
-__asm__("cld\n\t"
-	"movl %4,%%edi\n\t"
-	"repne\n\t"
-	"scasb\n\t"
-	"notl %%ecx\n\t"
-	"decl %%ecx\n\t"
-	"movl %%ecx,%%edx\n"
-	"1:\tlodsb\n\t"
-	"testb %%al,%%al\n\t"
-	"je 2f\n\t"
-	"movl %4,%%edi\n\t"
-	"movl %%edx,%%ecx\n\t"
-	"repne\n\t"
-	"scasb\n\t"
-	"jne 1b\n"
-	"2:\tdecl %0"
+register char * __res;      // __res 是寄存器变量(esi)
+__asm__("cld\n\t"           // 清方向位
+	"movl %4,%%edi\n\t"     // 字符串2 指针放入edi 中
+	"repne\n\t"             // 比较 al (al的值是0) 与 es:[edi]字节，并且 edi++
+	"scasb\n\t"             // 直到找到字符串2中 NULL 字符的位置，此时 edi 已经指向后 1 个字节
+	"notl %%ecx\n\t"        // ecx 中每位取反
+	"decl %%ecx\n\t"        // ecx = ecx - 1 得到了字符串 2 的长度值
+	"movl %%ecx,%%edx\n"    // 将串2 的长度值暂放入edx 中
+	"1:\tlodsb\n\t"         // 取 串1 字符 ds:[esi] -> al，并且 esi++
+	"testb %%al,%%al\n\t"   // 该字符等于0 值吗（串1 结尾）？
+	"je 2f\n\t"             // 如果是，则向前跳转到标号2 处
+	"movl %4,%%edi\n\t"     // 取串2 头指针放入edi 中
+	"movl %%edx,%%ecx\n\t"  // 再将串2 的长度值放入ecx 中
+	"repne\n\t"             // 比较 al 与串2 中字符 es:[edi]，并且 edi++
+	"scasb\n\t"             // 如果不相等就继续比较
+	"jne 1b\n"              // 如果不相等，则向后跳转到标号1 处
+	"2:\tdecl %0"           // esi--，指向最后一个包含在串2 中的字符
 	:"=S" (__res):"a" (0),"c" (0xffffffff),"0" (cs),"g" (ct)
 	);
-return __res-cs;
+return __res-cs;            // 返回字符序列的长度值
 }
 
+/**
+ * 在字符串1 中寻找首个包含字符串2 中的任何字符
+ * @param cs - 字符串1 的指针
+ * @param ct - 字符串2 的指针
+ * %0 -esi(__res)，%1 -eax(0)，%2 -ecx(0xffffffff)，%3 -esi(串1 指针csrc)，%4 -(串2 指针ct)
+ * @return 返回字符串1 中首个包含字符串2 中字符的指针
+ */
 extern inline char * strpbrk(const char * cs,const char * ct)
 {
-register char * __res ;
-__asm__("cld\n\t"
-	"movl %4,%%edi\n\t"
-	"repne\n\t"
-	"scasb\n\t"
-	"notl %%ecx\n\t"
-	"decl %%ecx\n\t"
-	"movl %%ecx,%%edx\n"
-	"1:\tlodsb\n\t"
-	"testb %%al,%%al\n\t"
-	"je 2f\n\t"
-	"movl %4,%%edi\n\t"
-	"movl %%edx,%%ecx\n\t"
-	"repne\n\t"
-	"scasb\n\t"
-	"jne 1b\n\t"
-	"decl %0\n\t"
-	"jmp 3f\n"
-	"2:\txorl %0,%0\n"
+register char * __res ;     // __res 是寄存器变量(esi)
+__asm__("cld\n\t"           // 清方向位
+	"movl %4,%%edi\n\t"     // 字符串2 指针放入edi 中
+	"repne\n\t"             // 比较 al (al的值是0) 与 es:[edi]字节，并且 edi++
+	"scasb\n\t"             // 直到找到字符串2中 NULL 字符的位置，此时 edi 已经指向后 1 个字节
+	"notl %%ecx\n\t"        // ecx 中每位取反
+	"decl %%ecx\n\t"        // ecx = ecx - 1 得到了字符串 2 的长度值
+	"movl %%ecx,%%edx\n"    // 将串2 的长度值暂放入edx 中
+	"1:\tlodsb\n\t"         // 取 串1 字符 ds:[esi] -> al，并且 esi++
+	"testb %%al,%%al\n\t"   // 该字符等于0 值吗（串1 结尾）？
+	"je 2f\n\t"             // 如果是，则向前跳转到标号2 处
+	"movl %4,%%edi\n\t"     // 取串2 头指针放入edi 中
+	"movl %%edx,%%ecx\n\t"  // 再将串2 的长度值放入ecx 中
+	"repne\n\t"             // 比较 al 与串2 中字符 es:[edi]，并且 edi++
+	"scasb\n\t"             // 如果不相等就继续比较
+	"jne 1b\n\t"            // 如果不相等，则向后跳转到标号1 处
+	"decl %0\n\t"           // esi--，指向最后一个包含在串2 中的字符
+	"jmp 3f\n"              // 向前跳转到标号3 处
+	"2:\txorl %0,%0\n"      // 没有找到符合条件的，将返回值为NULL
 	"3:"
 	:"=S" (__res):"a" (0),"c" (0xffffffff),"0" (cs),"g" (ct)
 	);
-return __res;
+return __res;               // 返回指针值
 }
 
+/**
+ * 在字符串1 中寻找首个匹配整个字符串2 的字符串
+ * @param cs - 字符串1 的指针
+ * @param ct - 字符串2 的指针
+ * %0 -eax(__res)，%1 -eax(0)，%2 -ecx(0xffffffff)，%3 -esi(串1 指针cs)，%4 -(串2 指针ct)
+ * @return 返回字符串1 中首个匹配字符串2 的字符串指针
+ */
 extern inline char * strstr(const char * cs,const char * ct)
 {
-register char * __res ;
-__asm__("cld\n\t" \
-	"movl %4,%%edi\n\t"
-	"repne\n\t"
-	"scasb\n\t"
-	"notl %%ecx\n\t"
-	"decl %%ecx\n\t"	/* NOTE! This also sets Z if searchstring='' */
-	"movl %%ecx,%%edx\n"
-	"1:\tmovl %4,%%edi\n\t"
-	"movl %%esi,%%eax\n\t"
-	"movl %%edx,%%ecx\n\t"
-	"repe\n\t"
-	"cmpsb\n\t"
-	"je 2f\n\t"		/* also works for empty string, see above */
-	"xchgl %%eax,%%esi\n\t"
-	"incl %%esi\n\t"
-	"cmpb $0,-1(%%eax)\n\t"
-	"jne 1b\n\t"
-	"xorl %%eax,%%eax\n\t"
+register char * __res ;     // __res 是寄存器变量(eax)
+__asm__("cld\n\t"           // 清方向位
+	"movl %4,%%edi\n\t"     // 字符串2 指针放入edi 中
+	"repne\n\t"             // 比较 al (al的值是0) 与 es:[edi]字节，并且 edi++
+	"scasb\n\t"             // 直到找到字符串2中 NULL 字符的位置，此时 edi 已经指向后 1 个字节
+	"notl %%ecx\n\t"        // ecx 中每位取反
+	"decl %%ecx\n\t"	/* NOTE! This also sets Z if searchstring='' */ // 注意！如果搜索串为空，将设置Z 标志 // 得串2 的长度值
+	"movl %%ecx,%%edx\n"    // 将串2 的长度值暂放入edx 中
+	"1:\tmovl %4,%%edi\n\t" // 取串2 头指针放入edi 中
+	"movl %%esi,%%eax\n\t"  // 将串1 的指针复制到eax 中
+	"movl %%edx,%%ecx\n\t"  // 再将串2 的长度值放入ecx 中
+	"repe\n\t"              // 比较串1 和串2 字符(ds:[esi],es:[edi])，esi++, edi++
+	"cmpsb\n\t"             // 若对应字符相等就一直比较下去
+	"je 2f\n\t"		/* also works for empty string, see above */    // 对空串同样有效，见上面 // 若全相等，则转到标号2
+	"xchgl %%eax,%%esi\n\t" // 串1 头指针 -> esi，比较结果的串1 指针 -> eax
+	"incl %%esi\n\t"        // 串1 头指针指向下一个字符
+	"cmpb $0,-1(%%eax)\n\t" // 串1 指针(eax-1)所指字节是0 吗？
+	"jne 1b\n\t"            // 不是则跳转到标号1，继续从串1 的第2 个字符开始比较
+	"xorl %%eax,%%eax\n\t"  // 清eax，表示没有找到匹配
 	"2:"
 	:"=a" (__res):"0" (0),"c" (0xffffffff),"S" (cs),"g" (ct)
 	);
-return __res;
+return __res;               // 返回比较结果
 }
 
+/**
+ * 计算字符串长度
+ * @param s - 字符串指针
+ * %0 - ecx(__res)，%1 - edi(字符串指针s)，%2 - eax(0)，%3 - ecx(0xffffffff)
+ * @return 返回字符串的长度
+ */
 extern inline int strlen(const char * s)
 {
-register int __res ;
-__asm__("cld\n\t"
-	"repne\n\t"
-	"scasb\n\t"
-	"notl %0\n\t"
-	"decl %0"
+register int __res ;        // __res 是寄存器变量(ecx)
+__asm__("cld\n\t"           // 清方向位
+	"repne\n\t"             // al(0)与字符串中字符es:[edi]比较
+	"scasb\n\t"             // 若不相等就一直比较
+	"notl %0\n\t"           // ecx 取反
+	"decl %0"               // ecx--，得字符串得长度值
 	:"=c" (__res):"D" (s),"a" (0),"0" (0xffffffff));
-return __res;
+return __res;               // 返回字符串长度值
 }
 
-extern char * ___strtok;
 
+// 函数原型：char* strtok (char* str,constchar* delimiters );
+// 函数功能：切割字符串，将str切分成一个个子串
+// 函数参数：
+//      str：在第一次被调用的时间str是传入需要被切割字符串的首地址；在后面调用的时间传入NULL。
+//      delimiters：表示切割字符串（字符串中每个字符都会 当作分割符）。
+// 函数返回值：
+//      当s中的字符查找到末尾时，返回NULL;
+//      如果查不到delimiter所标示的字符，则返回当前strtok的字符串的指针。
+
+/**
+ * 利用字符串2 中的字符将字符串1 分割成标记(token)序列。
+ * 将串1 看作是包含零个或多个单词(token)的序列，并由分割符字符串2 中的一个或多个字符分开。
+ * 第一次调用 strtok() 时，将返回指向字符串1 中第1 个token 首字符的指针，并在返回token 时将
+ * 一null 字符写到分割符处。后续使用null 作为字符串1 的调用，将用这种方法继续扫描字符串1，
+ * 直到没有token 为止。在不同的调用过程中，分割符串2 可以不同。
+ * 参数：s - 待处理的字符串1，ct - 包含各个分割符的字符串2。
+ * 汇编输出：%0 - ebx(__res)，%1 - esi(__strtok)；
+ * 汇编输入：%2 - ebx(__strtok)，%3 - esi(字符串1 指针s)，%4 - （字符串2 指针ct）。
+ * 返回：返回字符串s 中第1 个token，如果没有找到token，则返回一个null 指针。
+ * 后续使用字符串s 指针为null 的调用，将在原字符串s 中搜索下一个token。
+ */
+extern char * ___strtok;    // 用于临时存放指向下面被分析字符串1(s)的指针
 extern inline char * strtok(char * s,const char * ct)
 {
 register char * __res ;
-__asm__("testl %1,%1\n\t"
-	"jne 1f\n\t"
-	"testl %0,%0\n\t"
-	"je 8f\n\t"
-	"movl %0,%1\n"
-	"1:\txorl %0,%0\n\t"
-	"movl $-1,%%ecx\n\t"
-	"xorl %%eax,%%eax\n\t"
-	"cld\n\t"
-	"movl %4,%%edi\n\t"
-	"repne\n\t"
-	"scasb\n\t"
-	"notl %%ecx\n\t"
-	"decl %%ecx\n\t"
-	"je 7f\n\t"			/* empty delimeter-string */
-	"movl %%ecx,%%edx\n"
-	"2:\tlodsb\n\t"
-	"testb %%al,%%al\n\t"
-	"je 7f\n\t"
-	"movl %4,%%edi\n\t"
-	"movl %%edx,%%ecx\n\t"
-	"repne\n\t"
-	"scasb\n\t"
-	"je 2b\n\t"
-	"decl %1\n\t"
-	"cmpb $0,(%1)\n\t"
-	"je 7f\n\t"
-	"movl %1,%0\n"
-	"3:\tlodsb\n\t"
-	"testb %%al,%%al\n\t"
-	"je 5f\n\t"
-	"movl %4,%%edi\n\t"
-	"movl %%edx,%%ecx\n\t"
-	"repne\n\t"
-	"scasb\n\t"
-	"jne 3b\n\t"
-	"decl %1\n\t"
-	"cmpb $0,(%1)\n\t"
-	"je 5f\n\t"
-	"movb $0,(%1)\n\t"
-	"incl %1\n\t"
-	"jmp 6f\n"
-	"5:\txorl %1,%1\n"
-	"6:\tcmpb $0,(%0)\n\t"
-	"jne 7f\n\t"
-	"xorl %0,%0\n"
-	"7:\ttestl %0,%0\n\t"
-	"jne 8f\n\t"
-	"movl %0,%1\n"
+__asm__("testl %1,%1\n\t"       // 首先测试esi(字符串1 指针s)是否是 NULL
+	"jne 1f\n\t"                // 如果不是，则表明是首次调用本函数，跳转标号1
+	"testl %0,%0\n\t"           // 测试 ebx(__strtok) 是否是 NULL，如果是NULL，则表示此次是后续调用
+	"je 8f\n\t"                 // 如果 ebx 指针是NULL，则不能处理，跳转结束
+	"movl %0,%1\n"              // 将 ebx 指针复制到 esi
+	"1:\txorl %0,%0\n\t"        // 清 ebx 指针
+	"movl $-1,%%ecx\n\t"        // 置 ecx = 0xffffffff
+	"xorl %%eax,%%eax\n\t"      // 清零 eax
+	"cld\n\t"                   // 清方向位
+	"movl %4,%%edi\n\t"         // 下面求字符串2 的长度。edi 指向字符串2
+	"repne\n\t"                 // 将 al(0) 与 es:[edi] 比较，并且 edi++
+	"scasb\n\t"                 // 直到找到字符串2 的结束 NULL 字符，或计数 ecx==0
+	"notl %%ecx\n\t"            // 将 ecx 取反
+	"decl %%ecx\n\t"            // ecx--，得到字符串2 的长度值
+	"je 7f\n\t"			/* empty delimeter-string */    // 分割符字符串空 // 若串2 长度为0，则转标号7
+	"movl %%ecx,%%edx\n"        // 将串2 长度暂存入edx
+	"2:\tlodsb\n\t"             // 取串1 的字符 ds:[esi] -> al，并且 esi++
+	"testb %%al,%%al\n\t"       // 该字符为0 值吗(串1 结束)？
+	"je 7f\n\t"                 // 如果是，则跳转标号7
+	"movl %4,%%edi\n\t"         // edi 再次指向串2 首
+	"movl %%edx,%%ecx\n\t"      // 取串2 的长度值置入计数器ecx
+	"repne\n\t"                 // 将 al 中串1 的字符与串2 中所有字符比较
+	"scasb\n\t"                 // 判断该字符是否为分割符
+	"je 2b\n\t"                 // 若能在串2 中找到相同字符（分割符），则跳转标号2
+	"decl %1\n\t"               // 若不是分割符，则串1 指针esi 指向此时的该字符
+	"cmpb $0,(%1)\n\t"          // 该字符是NULL 字符吗？
+	"je 7f\n\t"                 // 若是，则跳转标号7 处
+	"movl %1,%0\n"              // 将该字符的指针 esi 存放在ebx
+	"3:\tlodsb\n\t"             // 取串1 下一个字符 ds:[esi] -> al，并且 esi++
+	"testb %%al,%%al\n\t"       // 该字符是NULL 字符吗？
+	"je 5f\n\t"                 // 若是，表示串1 结束，跳转到标号5
+	"movl %4,%%edi\n\t"         // edi 再次指向串2 首
+	"movl %%edx,%%ecx\n\t"      // 串2 长度值置入计数器ecx
+	"repne\n\t"                 // 将al 中串1 的字符与串2 中每个字符比较
+	"scasb\n\t"                 // 测试al 字符是否是分割符
+	"jne 3b\n\t"                // 若不是分割符则跳转标号3，检测串1 中下一个字符
+	"decl %1\n\t"               // 若是分割符，则 esi--，指向该分割符字符
+	"cmpb $0,(%1)\n\t"          // 该分割符是 NULL 字符吗？
+	"je 5f\n\t"                 // 若是，则跳转到标号5
+	"movb $0,(%1)\n\t"          // 若不是，则将该分割符用 NULL 字符替换掉
+	"incl %1\n\t"               // esi 指向串1 中下一个字符，也即剩余串首
+	"jmp 6f\n"                  // 跳转标号6 处
+	"5:\txorl %1,%1\n"          // esi 清零
+	"6:\tcmpb $0,(%0)\n\t"      // ebx 指针指向NULL 字符吗？
+	"jne 7f\n\t"                // 若不是，则跳转标号7
+	"xorl %0,%0\n"              // 若是，则让 ebx=NULL
+	"7:\ttestl %0,%0\n\t"       // ebx 指针为NULL 吗？
+	"jne 8f\n\t"                // 若不是则跳转8，结束汇编代码
+	"movl %0,%1\n"              // 将 esi 置为NULL
 	"8:"
 	:"=b" (__res),"=S" (___strtok)
 	:"0" (___strtok),"1" (s),"g" (ct)
 	);
-return __res;
+return __res;                   // 返回指向新 token 的指针
 }
 
 /*
  * Changes by falcon<zhangjinw@gmail.com>, the original return value is static
  * inline ... it can not be called by other functions in another files.
  */
-
+/**
+ * 内存块复制。从源地址 src 处开始复制 n 个字节到目的跌至 dest 处
+ * @param dest - 复制的目的地址
+ * @param src - 复制的源地址
+ * @param n - 复制的字节数
+ * %0 - ecx(n)，%1 - esi(src)，%2 - edi(dest)
+ * @return
+ */
 extern inline void * memcpy(void * dest,const void * src, int n)
 {
-__asm__("cld\n\t"
-	"rep\n\t"
-	"movsb"
+__asm__("cld\n\t"               // 清方向位
+	"rep\n\t"                   // 重复执行复制 ecx 个字节
+	"movsb"                     // 从 ds:[esi] 到 es:[edi] ，esi++，edi++
 	::"c" (n),"S" (src),"D" (dest)
 	);
-return dest;
+return dest;                    // 返回目的地址
 }
 
+/**
+ * 内存块移动。同内存块复制，但考虑移动的方向
+ * @param dest - 复制的目的地址
+ * @param src - 复制的源地址
+ * @param n - 复制的字节数
+ * 若 dest<src 则：%0 - ecx(n)，%1 - esi(src)，%2 - edi(dest)
+ * 否则：%0 - ecx(n)，%1 - esi(src+n-1)，%2 - edi(dest+n-1)
+ * 这样操作是为了防止在复制时错误地重叠覆盖
+ * @return
+ */
 extern inline void * memmove(void * dest,const void * src, int n)
 {
 if (dest<src)
-__asm__("cld\n\t"
-	"rep\n\t"
-	"movsb"
+__asm__("cld\n\t"               // 清方向位
+	"rep\n\t"                   // 从ds:[esi]到es:[edi]，并且esi++，edi++
+	"movsb"                     // 重复执行复制ecx 字节
 	::"c" (n),"S" (src),"D" (dest)
 	);
 else
-__asm__("std\n\t"
-	"rep\n\t"
-	"movsb"
+__asm__("std\n\t"               // 置方向位，从末端开始复制
+	"rep\n\t"                   // 从 ds:[esi] 到 es:[edi] ，并且 esi--，edi--
+	"movsb"                     // 复制ecx 个字节
 	::"c" (n),"S" (src+n-1),"D" (dest+n-1)
 	);
 return dest;
 }
 
+/**
+ * 比较 n 个字节的两块内存，即使遇到 NULL 字节也不停止比较
+ * @param cs - 内存块地址1
+ * @param ct - 内存块地址2
+ * @param count - 比较的字节数
+ * %0 - eax(__res)，%1 - eax(0)，%2 - edi(内存块1)，%3 - esi(内存块2)，%4 - ecx(count)
+ * @return 若块1>块2 返回1；块1<块2，返回-1；块1==块2，则返回0
+ */
 static inline int memcmp(const void * cs,const void * ct,int count)
 {
-register int __res ;
-__asm__("cld\n\t"
-	"repe\n\t"
-	"cmpsb\n\t"
-	"je 1f\n\t"
-	"movl $1,%%eax\n\t"
-	"jl 1f\n\t"
-	"negl %%eax\n"
+register int __res ;            // __res 是寄存器变量
+__asm__("cld\n\t"               // 清方向位
+	"repe\n\t"                  // 如果相等则重复
+	"cmpsb\n\t"                 // 比较 ds:[esi] 与 es:[edi] 的内容，并且 esi++，edi++
+	"je 1f\n\t"                 // 如果都相同，则跳转到标号1，返回 0(eax) 值
+	"movl $1,%%eax\n\t"         // 否则 eax 置 1
+	"jl 1f\n\t"                 // 若内存块2 内容的值 < 内存块1，则跳转标号1
+	"negl %%eax\n"              // 否则eax = -eax
 	"1:"
 	:"=a" (__res):"0" (0),"D" (cs),"S" (ct),"c" (count)
 	);
-return __res;
+return __res;                   // 返回比较结果
 }
 
+/**
+ * 在 n 字节大小的内存块中寻找指定字符
+ * @param cs - 内存块地址
+ * @param c - 指定的字符
+ * @param count - 内存块长度
+ * %0 - edi(__res)，%1 - eax(字符c)，%2 - edi(内存块地址csrc)，%3 - ecx(字节数count)
+ * @return 返回第一个匹配字符的指针，如果没有找到，则返回 NULL 字符
+ */
 extern inline void * memchr(const void * cs,char c,int count)
 {
-register void * __res ;
-if (!count)
+register void * __res ;         // __res 是寄存器变量
+if (!count)                     // 如果内存块长度==0，则返回NULL，没有找到
 	return NULL;
-__asm__("cld\n\t"
-	"repne\n\t"
-	"scasb\n\t"
-	"je 1f\n\t"
-	"movl $1,%0\n"
-	"1:\tdecl %0"
+__asm__("cld\n\t"               // 清方向位
+	"repne\n\t"                 // 如果不相等则重复执行下面语句
+	"scasb\n\t"                 // al 中字符与 es:[edi] 字符作比较，并且 edi++
+	"je 1f\n\t"                 // 如果相等则向前跳转到标号1 处
+	"movl $1,%0\n"              // 否则 edi 中置 1
+	"1:\tdecl %0"               // 让 edi 指向找到的字符（或是NULL）
 	:"=D" (__res):"a" (c),"D" (cs),"c" (count)
 	);
-return __res;
+return __res;                   // 返回字符指针
 }
 
+/**
+ * 用字符填写指定长度内存块。用字符 c 填写 s 指向的内存区域，共填 count 字节
+ * @param s - 内存块地址
+ * @param c - 字符
+ * @param count - 填充字节数
+ * %0 - eax(字符c)，%1 - edi(内存地址)，%2 - ecx(字节数count)
+ * @return
+ */
 static inline void * memset(void * s,char c,int count)
 {
-__asm__("cld\n\t"
-	"rep\n\t"
-	"stosb"
+__asm__("cld\n\t"               // 清方向位
+	"rep\n\t"                   // 重复 ecx 指定的次数，执行
+	"stosb"                     // 将 al 中字符存入 es:[edi] 中，并且 edi++
 	::"a" (c),"D" (s),"c" (count)
 	);
 return s;
