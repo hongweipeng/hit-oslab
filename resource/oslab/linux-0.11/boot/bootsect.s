@@ -96,7 +96,7 @@ go:	mov	ax,cs               ; 此时 cs = 0x9000， 执行后 ax = 0x9000
 	mov	es,ax               ; 设置 ds,es,ss 都为移动后的段处 cs 即 0x9000
 	                        ; 为 call 做准备
 ! put stack at 0x9ff00.
-; 将堆栈指针 sp 指向 0x9ff00  (即 0x9000:0xff00) 处
+; 将堆栈栈顶指针 sp 指向 0x9ff00  (即 0x9000:0xff00) 处
 	mov	ss,ax
 	mov	sp,#0xFF00		! arbitrary value >>512
 	                        ; /* 由于代码段移动过了，所以需要重新设置堆栈段的位置。
