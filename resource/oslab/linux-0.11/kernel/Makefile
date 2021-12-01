@@ -5,10 +5,15 @@
 # removes any old dependencies. DON'T put your own dependencies here
 # unless it's something special (ie not a .c file).
 #
+# FREAX 内核的 Makefile 文件。
+#
+# 注意!依赖关系是由 `make dep` 自动进行的，它也会自动去除原来的依赖信息。不要把你自己的
+# 依赖信息放在这里，除非是特别文件的（也即不是一个 .c 文件的信息）。
+# （Linux 最初的名字交 FREAX，后来被 ftp.funet.fi 的管理员改成 Linux 这个名字）
 
-AR	=ar
-AS	=as --32
-LD	=ld
+AR	=ar			# GNU 的二进制文件处理程序，用于创建、修改以及从归档文件中抽取文件。
+AS	=as --32	# GNU 的汇编程序
+LD	=ld			# GNU 的连接程序
 LDFLAGS	=-m elf_i386 -x
 CC	=gcc-3.4 -march=i386
 CFLAGS	=-m32 -g -Wall -O -fstrength-reduce -fomit-frame-pointer \
