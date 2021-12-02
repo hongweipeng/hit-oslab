@@ -192,14 +192,21 @@ coprocessor_error:
 	pushl %ecx
 	pushl %ebx
 	pushl %eax
-	movl $0x10,%eax
+	movl $0x10,%eax         # ds, es 置为指向内核数据段
 	mov %ax,%ds
 	mov %ax,%es
-	movl $0x17,%eax
+	movl $0x17,%eax         # fs 置为指向局部数据段（出错程序的数据段）
 	mov %ax,%fs
-	pushl $ret_from_sys_call
-	jmp math_error
+	pushl $ret_from_sys_call # 把下面调用返回地址入栈
+	jmp math_error          # 执行 C 函数 math_error() 参见 math/math_emulate.c
 
+# int7 -- 设备不存在或协处理器不存在。类型：错误；错误码：无
+# 如果控制寄存器 CRO 中 EM（模拟）标志置位，则当 CPU 执行一个协处理器指令时就会引发该
+# 中断，这样 CPU 就可以有机会让这个中断处理程序模拟协处理器指令。
+# CRO 的交换标志 TS 是在 CPU 执行任务转换时设置的。TS 可以用来确定什么时候协处理器中的
+# 内容与 CPU 正在执行的任务不匹配了。当 CPU 在于宁一个协处理器转移指令时发现 TS 置位时，
+# 就会引发该中断。此时就可以保存前一个任务的协处理器内容，并恢复新任务的协处理器执行状态。
+# 参见 kernel/sched.c 。
 .align 2
 device_not_available:
 	push %ds
@@ -209,16 +216,20 @@ device_not_available:
 	pushl %ecx
 	pushl %ebx
 	pushl %eax
-	movl $0x10,%eax
+	movl $0x10,%eax         # ds, es 置为指向内核数据段
 	mov %ax,%ds
 	mov %ax,%es
-	movl $0x17,%eax
+	movl $0x17,%eax         # fs 置为指向局部数据段（出错程序的数据段）
 	mov %ax,%fs
-	pushl $ret_from_sys_call
+	# 清 CR0 中任务已交换标志 TS，并取 CR0 值。若其中协处理器仿真标志 EM 没有置位，说明不是 EM
+	# 引起的中断，则恢复任务协处理器状态，执行 C 函数 math_state_restore()，并返回到
+	# ret_from_sys_call 处执行。
+	pushl $ret_from_sys_call    # ret_from_sys_call 入栈
 	clts				# clear TS so that we can use math
 	movl %cr0,%eax
 	testl $0x4,%eax			# EM (math emulation bit)
 	je math_state_restore
+	# 若 EM 标志是置位的，则去执行数学仿真程序 math_emulate()
 	pushl %ebp
 	pushl %esi
 	pushl %edi
@@ -226,8 +237,12 @@ device_not_available:
 	popl %edi
 	popl %esi
 	popl %ebp
-	ret
+	ret                 # 这里的 ret 将跳转到 ret_from_sys_call
 
+# int32 -- （int 0x20）时钟中断处理程序。中断频率被设置为 100 Hz (include/linux/sched.h 宏 HZ)
+# 定时芯片 8253/8254 是在 (kernel/sched.c 函数 sched_init) 初始化的。因此这里 jiffies 每 10 毫秒 加 1.
+# 这段代码将 jiffies 增 1，发送结束中断指令给 8259 控制器，然后用当前特权级作为参数调用 C 函数
+# do_timer(long CPL)。当调用返回时转去检测并处理信号。
 .align 2
 timer_interrupt:
 	push %ds		# save ds,es and put kernel data space
@@ -237,14 +252,17 @@ timer_interrupt:
 	pushl %ecx		# save those across function calls. %ebx
 	pushl %ebx		# is saved as we use that in ret_sys_call
 	pushl %eax
-	movl $0x10,%eax
+	movl $0x10,%eax     # ds, es 置为指向内核数据段
 	mov %ax,%ds
 	mov %ax,%es
-	movl $0x17,%eax
+	movl $0x17,%eax     # fs 置为指向局部数据段（程序的数据段）
 	mov %ax,%fs
 	incl jiffies
+	# 由于初始化中断控制芯片时没有采用自动 EOI，所以这里需要发指令结束该硬件中断
 	movb $0x20,%al		# EOI to interrupt controller #1
-	outb %al,$0x20
+	outb %al,$0x20      # 操作命令字 OCW2 送 0x20 端口
+	# 下面从堆栈中去除执行系统调用代码的选择符（CS段寄存器值）中的当前特权级别（0或3）并压入堆栈，
+	# 作为 do_timer 的参数。do_timer() 函数执行任务切换、计时等工作，参见 kernel/sched.c
 	movl CS(%esp),%eax
 	andl $3,%eax		# %eax is CPL (0 or 3, 0=supervisor)
 	pushl %eax
@@ -252,28 +270,39 @@ timer_interrupt:
 	addl $4,%esp		# task switching to accounting ...
 	jmp ret_from_sys_call
 
+#### 这个是 sys_execve() 系统调用。取中断调用程序的代码指针作为参数调用 C 函数 do_execve()
+# 参见 fs/exec.c
 .align 2
 sys_execve:
-	lea EIP(%esp),%eax
+	lea EIP(%esp),%eax  # eax 指向堆栈中保存的用户程序 eip 指针处 (EIP + %esp)
 	pushl %eax
 	call do_execve
-	addl $4,%esp
+	addl $4,%esp        # 丢弃调用时压入栈的 EIP 值
 	ret
 
+#### sys_fork() 系统调用，用于创建子进程，时 system_call 功能2.原型在 include/linux/sys.h 中
+# 首先调用 C 函数 find_empty_process() 取得一个进程号 pid。若返回负数说明任务数组已满。然后调用
+# copy_process() 复制进程。
 .align 2
 sys_fork:
-	call find_empty_process
-	testl %eax,%eax
+	call find_empty_process # 调用 find_empty_process() 参见 kernel/fork.c
+	testl %eax,%eax     # 在 eax 中返回进程号 pid。若为负数则退出
 	js 1f
 	push %gs
 	pushl %esi
 	pushl %edi
 	pushl %ebp
 	pushl %eax
-	call copy_process
-	addl $20,%esp
+	call copy_process   # 调用 C 函数 copy_process() 参见：kernel/fork.c
+	addl $20,%esp       # 丢弃这里所有压栈内容
 1:	ret
 
+#### int46 -- （int 0x2e) 硬盘中断处理程序，响应硬件中断请求 IRQ14。
+# 当请求的硬盘操作完成或出错就会发出此中断信号。（参见：kernel/blk_drv/hd.c）。
+# 首先向 8259A 中断控制从芯片发送结束硬件中断指令(EOI)，然后取变量 do_hd 中的函数指针
+# 放入 edx 寄存器中，并设置 do_hd 为 NULL，接着判断 edx 函数指针是否为空。如果为空，则
+# 给 edx 赋值指向 unexpected_hd_interrupt() ，用于显示出错信息。随后 8259A 主芯片
+# 送 EOI 指令，并调用 edx 中指针指向的函数：read_intr()、write_intr() 或 unexpected_hd_interrupt()。
 hd_interrupt:
 	pushl %eax
 	pushl %ecx
@@ -281,23 +310,27 @@ hd_interrupt:
 	push %ds
 	push %es
 	push %fs
-	movl $0x10,%eax
+	movl $0x10,%eax     # ds, es 置为指向内核数据段
 	mov %ax,%ds
 	mov %ax,%es
-	movl $0x17,%eax
+	movl $0x17,%eax     # fs 置为指向局部数据段（程序的数据段）
 	mov %ax,%fs
+	# 由于初始化中断控制芯片时没有采用自动 EOI，所以之类需要发指令结束该硬件中断。
 	movb $0x20,%al
-	outb %al,$0xA0		# EOI to interrupt controller #1
-	jmp 1f			# give port chance to breathe
+	outb %al,$0xA0		# EOI to interrupt controller #1    # 送从 8259A。
+	jmp 1f			# give port chance to breathe           # jmp 起延时作用
 1:	jmp 1f
+    # do_hd 定义了一个函数指针，将被赋予 read_intr() 或 write_intr() 函数地址。放到 edx 寄存器后
+    # 就将 do_hd 指针变量置为 NULL。然后测试得到的函数指针，若该指针为空，则赋予该指针指向 C 函数
+    # unexpected_hd_interrupt()，以处理未知硬盘中断。
 1:	xorl %edx,%edx
 	xchgl do_hd,%edx
-	testl %edx,%edx
-	jne 1f
+	testl %edx,%edx     # 测试函数指针是否为 NULL
+	jne 1f              # 若空，则使指针指向 C 函数 unexpected_hd_interrupt，参见：kernel/blk_drv/hd.c
 	movl $unexpected_hd_interrupt,%edx
-1:	outb %al,$0x20
+1:	outb %al,$0x20      # 送主 8259A 中断控制器 EOI 指令（结束硬件中断）。
 	call *%edx		# "interesting" way of handling intr.
-	pop %fs
+	pop %fs         # 上句调用 do_hd 指向的 C 函数
 	pop %es
 	pop %ds
 	popl %edx
@@ -305,6 +338,12 @@ hd_interrupt:
 	popl %eax
 	iret
 
+#### int38 -- （int 0x26）软盘驱动器中断处理程序，相应硬件中断请求 IRQ6。
+# 其处理过程与上面对硬盘的处理基本一样。（kernel/blk_drv/floppy.c）。
+# 首先向 8259A 中断控制器主芯片发送 EOI 指令，然后取变量 do_floppy 中的函数指针放入 eax
+# 寄存器中，并置 do_floppy 为 NULL，接着判断 eax 函数指针是否为空。若为空，则给 eax 赋值指向
+# unexpected_floppy_interrupt()，用于显示出错信息。随后调用 eax 指向的函数：rw_interrupt，
+# 或 seek_interrupt 或 recal_interrupt 或 reset_interrupt 或 unexpected_floppy_interrupt。
 floppy_interrupt:
 	pushl %eax
 	pushl %ecx
@@ -312,20 +351,23 @@ floppy_interrupt:
 	push %ds
 	push %es
 	push %fs
-	movl $0x10,%eax
+	movl $0x10,%eax     # ds, es 置为指向内核数据段
 	mov %ax,%ds
 	mov %ax,%es
-	movl $0x17,%eax
+	movl $0x17,%eax     # fs 置为指向局部数据段（程序的数据段）
 	mov %ax,%fs
-	movb $0x20,%al
+	movb $0x20,%al      # 送主 8259A 中断控制器 EOI 指令（结束硬件中断）。
 	outb %al,$0x20		# EOI to interrupt controller #1
+	# do_floppy 为一函数指针，将被赋值实际处理 C 函数指针。该指针在被交换到 eax 寄存器后就将
+	# do_floppy 变量置空。然后测试 eax 中原指针是否为空，若是则使指针指向 C 函数
+	# unexpected_floppy_interrupt
 	xorl %eax,%eax
 	xchgl do_floppy,%eax
-	testl %eax,%eax
-	jne 1f
+	testl %eax,%eax     # 测试函数指针是否为 NULL？
+	jne 1f              # 若不为空，跳转标号 1；若为空，则使指针指向 unexpected_floppy_interrupt
 	movl $unexpected_floppy_interrupt,%eax
-1:	call *%eax		# "interesting" way of handling intr.
-	pop %fs
+1:	call *%eax		# "interesting" way of handling intr.   # 间接调用
+	pop %fs             # 上局调用 do_floppy 指向的函数
 	pop %es
 	pop %ds
 	popl %edx
@@ -333,6 +375,8 @@ floppy_interrupt:
 	popl %eax
 	iret
 
+#### int39 -- (int 0x27) 并行口中断处理程序，对应硬件中断请求信号 IRQ7。
+# 本版本内核还未实现。这里只是发送 EOI 指令。
 parallel_interrupt:
 	pushl %eax
 	movb $0x20,%al
