@@ -1,0 +1,17 @@
+version: "3"
+services:
+  oslab:
+    build:
+      context: .
+    # x11 forwarding 必须使用 host 模式
+    network_mode: "host"
+    container_name: oslab
+    hostname: oslab
+    stdin_open: true # docker run -i
+    tty: true        # docker run -t
+    privileged: true
+    working_dir: /root/oslab/
+    #command: /usr/sbin/init
+    environment:
+      TZ: "Asia/Shanghai"
+    command: /usr/sbin/init
