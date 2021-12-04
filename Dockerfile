@@ -27,6 +27,8 @@ gcc gcc-multilib gdb make man vim openssh-server \
 x-window-system-core \
 # 图形界面测试  执行：xarclock
 xarclock \
+# vim 中可输入中文
+ttf-wqy-microhei ttf-wqy-zenhei \
 # 编译oslab需要的
 # as86 汇编指令集
 bin86 \
