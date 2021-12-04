@@ -28,7 +28,9 @@ x-window-system-core \
 # 图形界面测试  执行：xarclock
 xarclock \
 # vim 中可输入中文
-ttf-wqy-microhei ttf-wqy-zenhei \
+locales \
+# 中文字体
+fonts-wqy-microhei fonts-wqy-zenhei \
 # 编译oslab需要的
 # as86 汇编指令集
 bin86 \
@@ -50,11 +52,14 @@ libxpm4:i386 \
 && make all \
 # 清理
 && apt clean \
+# 设置 utf8 为默认 \
+&& localedef -c -f UTF-8 -i zh_CN zh_CN.utf8 \
 # 设置 Shell 字符编码
 && echo "alias rm='rm -i'" >> /root/.bashrc \
 && echo "alias cp='cp -i'" >> /root/.bashrc \
 && echo "alias mv='mv -i'" >> /root/.bashrc \
 && echo "export LESSCHARSET=utf-8" >> /root/.bashrc \
+&& echo "export LANG=zh_CN.utf8" >> /root/.bashrc \
 # sshd 服务
 && sed -i "s/#Port.*/Port 6222/g" /etc/ssh/sshd_config \
 && sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config \
