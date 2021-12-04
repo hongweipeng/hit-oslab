@@ -53,10 +53,12 @@ libxpm4:i386 \
 && apt clean \
 # 设置 utf8 为默认 \
 && localedef -c -f UTF-8 -i zh_CN zh_CN.utf8 \
-# 设置 Shell 字符编码
-&& echo "alias rm='rm -i'" >> /root/.bashrc \
-&& echo "alias cp='cp -i'" >> /root/.bashrc \
-&& echo "alias mv='mv -i'" >> /root/.bashrc \
+# 设置 Shell 字符编码 \
+&& sed -i "s/# export/export/g" /root/.bashrc \
+&& sed -i "s/# alias/alias/g" /root/.bashrc \
+# && echo "alias rm='rm -i'" >> /root/.bashrc \
+# && echo "alias cp='cp -i'" >> /root/.bashrc \
+# && echo "alias mv='mv -i'" >> /root/.bashrc \
 && echo "export LESSCHARSET=utf-8" >> /root/.bashrc \
 && echo "export LANG=C.UTF-8" >> /root/.bashrc \
 # sshd 服务
