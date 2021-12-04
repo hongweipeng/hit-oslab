@@ -11,7 +11,7 @@ services:
     tty: true        # docker run -t
     privileged: true
     working_dir: /root/oslab/
-    #command: /usr/sbin/init
     environment:
       TZ: "Asia/Shanghai"
-    command: /usr/sbin/init
+    # command: /usr/sbin/init # ubuntu
+    command: /bin/systemd
