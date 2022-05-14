@@ -61,6 +61,7 @@ libxpm4:i386 \
 # && echo "alias mv='mv -i'" >> /root/.bashrc \
 && echo "export LESSCHARSET=utf-8" >> /root/.bashrc \
 && echo "export LANG=C.UTF-8" >> /root/.bashrc \
+&&  mkdir -p /run/sshd \
 # sshd 服务
 && sed -i "s/#Port.*/Port 6222/g" /etc/ssh/sshd_config \
 && sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config \
